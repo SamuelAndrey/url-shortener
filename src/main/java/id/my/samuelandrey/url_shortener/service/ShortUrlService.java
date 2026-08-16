@@ -7,6 +7,9 @@ import id.my.samuelandrey.url_shortener.repository.ShortUrlRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,6 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
+import java.util.List;
 
 import static id.my.samuelandrey.url_shortener.utility.UrlConstant.CHARACTER_LENGTH;
 import static id.my.samuelandrey.url_shortener.utility.UrlConstant.MAX_RETRY;
@@ -28,7 +32,6 @@ public class ShortUrlService {
     private String baseUrl;
 
     private final SecureRandom random = new SecureRandom();
-
 
     @Transactional
     public ShortUrlResponse create(CreateShortUrlRequest request) {
@@ -48,13 +51,7 @@ public class ShortUrlService {
 
                 ShortUrl savedShortUrl = shortUrlRepository.saveAndFlush(shortUrl);
 
-                return ShortUrlResponse.builder()
-                        .id(savedShortUrl.getId())
-                        .shortCode(savedShortUrl.getShortCode())
-                        .originalUrl(savedShortUrl.getOriginalUrl())
-                        .shortUrl(baseUrl + "/api/urls/" + shortUrl.getShortCode())
-                        .expiredAt(shortUrl.getExpiredAt())
-                        .build();
+                return toShortUrlResponse(savedShortUrl);
 
             } catch (DataIntegrityViolationException exception) {
 
@@ -63,29 +60,24 @@ public class ShortUrlService {
                 }
 
                 throw new ResponseStatusException(
-                        HttpStatus.INTERNAL_SERVER_ERROR, exception.getMessage()
-                );
+                        HttpStatus.INTERNAL_SERVER_ERROR, exception.getMessage());
             }
         }
 
         throw new ResponseStatusException(
-                HttpStatus.INTERNAL_SERVER_ERROR, "Failed to generated shorten URL."
-        );
+                HttpStatus.INTERNAL_SERVER_ERROR, "Failed to generated shorten URL.");
     }
-
 
     @Transactional
     public ShortUrlResponse getByShortCode(String shortCode) {
 
         ShortUrl shortUrl = shortUrlRepository.findByShortCode(shortCode)
                 .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Shorten URL not found.")
-                );
+                        HttpStatus.NOT_FOUND, "Shorten URL not found."));
 
         if (LocalDateTime.now().isAfter(shortUrl.getExpiredAt())) {
             throw new ResponseStatusException(
-                    HttpStatus.NOT_FOUND, "Shorten URL expired."
-            );
+                    HttpStatus.NOT_FOUND, "Shorten URL expired.");
         }
 
         shortUrlRepository.incrementClickCount(shortCode);
@@ -93,28 +85,51 @@ public class ShortUrlService {
         ShortUrl updatedShortUrl = shortUrlRepository.findByShortCode(shortCode)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
-                        "Shorten URL not found."
-                ));
+                        "Shorten URL not found."));
 
-        return ShortUrlResponse.builder()
-                .id(updatedShortUrl.getId())
-                .shortCode(updatedShortUrl.getShortCode())
-                .originalUrl(updatedShortUrl.getOriginalUrl())
-                .shortUrl(baseUrl + "/api/urls/" + updatedShortUrl.getShortCode())
-                .clickCount(updatedShortUrl.getClickCount())
-                .expiredAt(updatedShortUrl.getExpiredAt())
-                .build();
+        return toShortUrlResponse(updatedShortUrl);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ShortUrlResponse> listShortUrl(
+            Pageable pageable,
+            String shortCode,
+            String originalUrl
+    ) {
+        
+        Page<ShortUrl> shortUrls = shortUrlRepository.listShortUrl(
+                pageable,
+                shortCode,
+                originalUrl
+        );
+
+        List<ShortUrlResponse> shortUrlResponseList = shortUrls.getContent()
+                .stream()
+                .map(this::toShortUrlResponse)
+                .toList();
+
+        return new PageImpl<>(shortUrlResponseList, pageable, shortUrls.getTotalElements());
     }
 
     /**
      * ====================================
-     * PRIVATE HELPER
+     * Private Helper
      * ====================================
      *
      * <p>Create new private helper above
      * contain all private helper.</p>
      */
 
+    private ShortUrlResponse toShortUrlResponse(ShortUrl shortUrl) {
+        return ShortUrlResponse.builder()
+                .id(shortUrl.getId())
+                .shortCode(shortUrl.getShortCode())
+                .originalUrl(shortUrl.getOriginalUrl())
+                .shortUrl(baseUrl + "/api/urls/" + shortUrl.getShortCode())
+                .clickCount(shortUrl.getClickCount())
+                .expiredAt(shortUrl.getExpiredAt())
+                .build();
+    }
 
     private String generateCode() {
         String characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -130,7 +145,6 @@ public class ShortUrlService {
 
         return result.toString();
     }
-
 
     private boolean isShortCodeCollision(DataIntegrityViolationException exception) {
 
