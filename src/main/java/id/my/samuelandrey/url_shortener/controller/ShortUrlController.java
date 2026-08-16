@@ -7,6 +7,8 @@ import id.my.samuelandrey.url_shortener.model.response.ShortUrlResponse;
 import id.my.samuelandrey.url_shortener.service.ShortUrlService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 
 import org.springframework.http.MediaType;
@@ -41,7 +43,7 @@ public class ShortUrlController {
     }
 
     @GetMapping(
-            path = "api/urls/{shortCode}",
+            path = "/api/urls/{shortCode}",
             produces = MediaType.APPLICATION_JSON_VALUE
     )
     public ResponseEntity<GeneralBodyResponse> get(
@@ -61,5 +63,30 @@ public class ShortUrlController {
 
     }
 
+    @GetMapping(
+            path = "/api/urls",
+            produces = MediaType.APPLICATION_JSON_VALUE
+    )
+    public ResponseEntity<GeneralBodyResponse> list(
+            Pageable pageable,
+            @RequestParam(value = "shortCode", required = false) String shortCode,
+            @RequestParam(value = "originalUrl", required = false) String originalUrl
+    ) {
+        Page<ShortUrlResponse> response = shortUrlService.listShortUrl(
+                pageable,
+                shortCode,
+                originalUrl
+        );
+
+        return ResponseEntity.status(HttpStatus.OK)
+                .body(
+                        GeneralBodyResponse.builder()
+                                .code(HttpStatus.OK.value())
+                                .status(HttpStatus.OK.getReasonPhrase())
+                                .message("Successfully get list short url")
+                                .data(response)
+                                .build()
+                );
+    }
 
 }
