@@ -16,7 +16,7 @@ public class ErrorController {
                 .body(
                         GeneralBodyResponse.builder()
                                 .code(exception.getStatusCode().value())
-                                .status(HttpStatus.valueOf(exception.getStatusCode().value()).getReasonPhrase())
+                                .status(exception.getBody().getTitle())
                                 .message(exception.getReason())
                                 .build()
                 );
